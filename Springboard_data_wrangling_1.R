@@ -5,7 +5,7 @@ library(tidyr)
 
 #part 0
 
-data <- read.csv('/Users/Randy_Linder/Google Drive/Springboard/Springboard/refine_original.csv', header = T, sep = ",")
+data <- read.csv('/Users/Randy_Linder/Google Drive/Springboard/Foundations-of-Data-Science/refine_original.csv', header = T, sep = ",")
 data <- data.frame(data)
 
 # part 1
@@ -14,6 +14,7 @@ data <- data.frame(data)
 #names are standardized. For example, you can transform 
 #the values in the column to be: philips, akzo, van houten and unilever (all lowercase).
 #data %>% glimpse()
+
 data <- data %>% mutate_each(funs(replace(., grepl('ill', .) | grepl('hlip', .) , 'philips')), company)
 data <- data %>% mutate_each(funs(replace(., grepl('k z', .) | grepl('0', .) | grepl('A', .)  , 'akzo')), company)
 data <- data %>% mutate_each(funs(replace(., grepl('V', .) | grepl('H', .) , 'van houten')), company)
