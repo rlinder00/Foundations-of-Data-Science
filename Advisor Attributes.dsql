@@ -1,0 +1,344 @@
+﻿select top 100
+FA.FINCL_ITRMY_PRSON_UID, 
+FA.FRST_NM,
+FA.LAST_NM, 
+FA.PRSON_CRD_NUM,
+dis.GENDER,
+cast(dis.DATEBECAMEREP_NUMBEROFYEARS as nvarchar) as AGE_BEEN_REP,
+PROS.RTL_SLS_TIER_DESC,
+FRST_TXN_DT.TRD_DT as FRST_TXN_DT,
+FA.PARNT_organization_type,
+FA.PARNT_FINCL_ITRMY_ORG_NM,
+FA.PARNT_FINCL_ITRMY_ORG_UID,
+FND_RANK.ASSET_CLASS as ASS_CLASS_1,
+FND_RANK.ASSET_CLASS_AUM as ASS_CLASS_1_AUM,
+FND_RANK.ASSET_CLASS_AUM / MAT.FA_AUM as ASS_CLASS_1_PSHARE, 
+---
+FND_RANK2.ASSET_CLASS as ASS_CLASS_2,
+FND_RANK2.ASSET_CLASS_AUM as ASS_CLASS_2_AUM,
+FND_RANK2.ASSET_CLASS_AUM / MAT.FA_AUM as ASS_CLASS_2_PSHARE,
+---
+PROD_TYPE_alt.INVSR_ACCT_TYP_CD as PROD_alt_1,
+PROD_TYPE_alt.ACCT_TYPE_AUM as PROD_alt_1_AUM,
+PROD_TYPE_alt.ACCT_TYPE_AUM / MAT.FA_AUM as PROD_alt_1_PSHARE,
+---
+PROD_TYPE.INV_VEH_TYP_NM as PROD_1,
+PROD_TYPE.ACCT_TYPE_AUM as PROD_1_AUM,
+PROD_TYPE.ACCT_TYPE_AUM / MAT.FA_AUM as PROD_1_TYPE_PSHARE,
+---
+--PROD_TYPE2.INVSR_ACCT_TYP_CD as PROD_2,
+--PROD_TYPE2.ACCT_TYPE_AUM as PROD_2_AUM,
+--PROD_TYPE2.ACCT_TYPE_AUM / MAT.FA_AUM as PROD_2_TYPE_PSHARE,
+
+FT_T.TXN_CNT,
+FT_S.SLS_AMT,
+FT_R.RDMPT_AMT,
+MAT.FA_AUM as 'AUM_+_TEAM_AUM',
+WC.CONTENT_PILLAR_CATEGORY,
+count(distinct WC.date_time) as 'CLICK_CNT'
+
+from 
+[MSS_I_MSSBIBRDIM_S].[dbo].[FINCL_ITRMY_PERSON_DIM] FA
+
+-- this helps us pull the advisor prospect assignment A,B,C,HP - according to MAVA, it's most recent assignment
+join (select A.FINCL_ITRMY_PRSON_UID, B.RTL_SLS_TIER_DESC from MSS_I_MSSBI_NS.dbo.FINCL_ITRMY_PRSN_DIM_BROKER_VW as A 
+left join MSS_I_MSSBI_NS.dbo.LU_RETAIL_SLS_TIER_VW as B
+on A.RTL_SLS_TIER_CD = B.RTL_SLS_TIER_CD) PROS
+
+on FA.FINCL_ITRMY_PRSON_UID = PROS.FINCL_ITRMY_PRSON_UID
+
+-------------------------------------------------------------------------------------------- web clicks
+left join (select 
+source_1,
+fincl_itrmy_prson_uid, 
+date_time,
+url,
+whslr_terr_id, 
+parnt_fincl_itrmy_org_nm, 
+whlsr_terr_nm, 
+fund_name, 
+content_pillar_category 
+
+from
+[MSS_U_NADBI_S].[dbo].[NADBI_DS_GTM_STG2_ADVISOR_WEB_VISITS_CP_INVESTMENTS_Q22016] WC1 
+
+union 
+
+select * from 
+[MSS_U_NADBI_S].[dbo].[NADBI_DS_GTM_STG2_ADVISOR_WEB_VISITS_CP_OTHERS_Q22016] WC2 ) WC
+on cast(FA.FINCL_ITRMY_PRSON_UID as nvarchar) = WC.FINCL_ITRMY_PRSON_UID
+
+-------------------------------------------------------------------------------------------- 
+
+-- this helps us pull in advisor aum
+join (select FINCL_ITRMY_PRSON_ID, sum(p.ASSET_VAL_AMT + p.TEAM_ALLOC_ASSET_VAL_AMT) as FA_AUM from [MSS_I_MSSBIBRFACT_NS].[dbo].[ASSET_MTHLY_AGG] p where  --monthly aggregation table 
+p.MO_NUM = '201606' --fix FA assets at most recent date
+group by FINCL_ITRMY_PRSON_ID) MAT
+on FA.FINCL_ITRMY_PRSON_ID = MAT.FINCL_ITRMY_PRSON_ID
+
+-- total transactions in ltm
+join (select FINCL_ITRMY_PRSON_ID, count(*) as TXN_CNT from [MSS_I_MSSBIBRTXN_S].[dbo].[FINANCIAL_TRANSACTION] where MO_NUM between '201506' and '201606' group by FINCL_ITRMY_PRSON_ID) FT_T -- total transactions in LTM
+on FA.FINCL_ITRMY_PRSON_ID = FT_T.FINCL_ITRMY_PRSON_ID --and MAT.MO_NUM = FT.MO_NUM
+
+-- total sales in ltm
+join (select FINCL_ITRMY_PRSON_ID, sum(SLS_AMT) as SLS_AMT from [MSS_I_MSSBIBRTXN_S].[dbo].[FINANCIAL_TRANSACTION] where MO_NUM between '201506' and '201606' group by FINCL_ITRMY_PRSON_ID) FT_S -- total sales in LTM
+on FA.FINCL_ITRMY_PRSON_ID = FT_S.FINCL_ITRMY_PRSON_ID --and MAT.MO_NUM = FT.MO_NUM
+
+-- total reds in ltm
+join (select FINCL_ITRMY_PRSON_ID, sum(RDMPT_AMT) as RDMPT_AMT from [MSS_I_MSSBIBRTXN_S].[dbo].[FINANCIAL_TRANSACTION] where MO_NUM between '201506' and '201606' group by FINCL_ITRMY_PRSON_ID) FT_R -- total reds in LTM
+on FA.FINCL_ITRMY_PRSON_ID = FT_R.FINCL_ITRMY_PRSON_ID --and MAT.MO_NUM = FT.MO_NUM
+
+------------------------------------------------------------------------------------------- TOP asset class by AUM and proportion of portfolio
+join (select
+FINCL_ITRMY_PRSON_ID,
+ASSET_CLASS,
+ASSET_CLASS_AUM,
+rank() OVER (PARTITION BY FINCL_ITRMY_PRSON_ID ORDER BY ASSET_CLASS_AUM DESC) AS AUM_RANK
+
+from (select 
+FINCL_ITRMY_PRSON_ID, 
+inv_objtv_typ_nm as ASSET_CLASS,
+--case when PARNT_FUND_ACRNM_CD like ('%AFTD%') then 'AFTD' else PARNT_FUND_ACRNM_CD end as FUND_ACRNM,
+sum(ASSET_VAL_AMT + TEAM_ALLOC_ASSET_VAL_AMT) as ASSET_CLASS_AUM 
+
+from [MSS_I_MSSBIBRFACT_NS].[dbo].[ASSET_MTHLY_AGG] MAT_2 
+join [MSS_I_MSSBI_NS].[dbo].[INV_VEH_VW] F -- fund data
+on MAT_2.INV_VEH_ID = F.INV_VEH_ID
+
+where 
+MAT_2.MO_NUM = '201606' 
+and ASSET_VAL_AMT + TEAM_ALLOC_ASSET_VAL_AMT != 0 
+
+group by 
+FINCL_ITRMY_PRSON_ID, 
+inv_objtv_typ_nm) A 
+
+group by 
+FINCL_ITRMY_PRSON_ID,
+ASSET_CLASS,
+ASSET_CLASS_AUM  ) FND_RANK
+on FA.FINCL_ITRMY_PRSON_ID = FND_RANK.FINCL_ITRMY_PRSON_ID
+
+
+------------------------------------------------------------------------------------------- 2nd asset class by AUM and proportion of portfolio
+join (select
+FINCL_ITRMY_PRSON_ID,
+ASSET_CLASS,
+ASSET_CLASS_AUM,
+rank() OVER (PARTITION BY FINCL_ITRMY_PRSON_ID ORDER BY ASSET_CLASS_AUM DESC) AS AUM_RANK
+
+from (select 
+FINCL_ITRMY_PRSON_ID, 
+inv_objtv_typ_nm as ASSET_CLASS,
+--case when PARNT_FUND_ACRNM_CD like ('%AFTD%') then 'AFTD' else PARNT_FUND_ACRNM_CD end as FUND_ACRNM,
+sum(ASSET_VAL_AMT + TEAM_ALLOC_ASSET_VAL_AMT) as ASSET_CLASS_AUM 
+
+from [MSS_I_MSSBIBRFACT_NS].[dbo].[ASSET_MTHLY_AGG] MAT_3
+join [MSS_I_MSSBI_NS].[dbo].[INV_VEH_VW] F -- fund data
+on MAT_3.INV_VEH_ID = F.INV_VEH_ID
+
+where 
+MAT_3.MO_NUM = '201606' 
+and ASSET_VAL_AMT + TEAM_ALLOC_ASSET_VAL_AMT != 0 
+
+group by 
+FINCL_ITRMY_PRSON_ID, 
+inv_objtv_typ_nm) B
+
+group by 
+FINCL_ITRMY_PRSON_ID,
+ASSET_CLASS,
+ASSET_CLASS_AUM  ) FND_RANK2
+on FA.FINCL_ITRMY_PRSON_ID = FND_RANK2.FINCL_ITRMY_PRSON_ID
+
+------------------------------------------------------------------------------------------- First TXN date
+
+join (select 
+FINCL_ITRMY_PRSON_ID,
+TRD_DT,
+rank() OVER (PARTITION BY FINCL_ITRMY_PRSON_ID ORDER BY TRD_DT) AS TRD_DT_RANK
+
+from (select FINCL_ITRMY_PRSON_ID, TRD_DT from [MSS_I_MSSBIBRTXN_S].[dbo].[FINANCIAL_TRANSACTION]) A
+
+group by
+FINCL_ITRMY_PRSON_ID,
+TRD_DT) FRST_TXN_DT
+on FA.FINCL_ITRMY_PRSON_ID = FRST_TXN_DT.FINCL_ITRMY_PRSON_ID 
+
+-------------------------------------------------------------------------------------------- prod type
+
+join (
+
+select
+FINCL_ITRMY_PRSON_ID,
+INV_VEH_TYP_NM,
+ACCT_TYPE_AUM,
+rank() OVER (PARTITION BY FINCL_ITRMY_PRSON_ID ORDER BY ACCT_TYPE_AUM desc) AS ACCT_TYPE_RANK
+
+from (select FINCL_ITRMY_PRSON_ID, VEH.INV_VEH_TYP_NM, sum(ASSET_VAL_AMT + TEAM_ALLOC_ASSET_VAL_AMT) as ACCT_TYPE_AUM from [MSS_I_MSSBIBRFACT_NS].[dbo].[ASSET_MTHLY_AGG] M
+join [MSS_I_MSSBI_NS].[dbo].[INV_VEH_VW] VEH on M.INV_VEH_ID =  VEH.INV_VEH_ID
+where M.MO_NUM = '201606'
+group by FINCL_ITRMY_PRSON_ID, VEH.INV_VEH_TYP_NM) A
+
+group by
+FINCL_ITRMY_PRSON_ID,
+INV_VEH_TYP_NM,
+ACCT_TYPE_AUM
+
+
+) PROD_TYPE
+on FA.FINCL_ITRMY_PRSON_ID = PROD_TYPE.FINCL_ITRMY_PRSON_ID 
+
+-------------------------------------------------------------------------------------------- prod type alt
+
+join (select 
+FINCL_ITRMY_PRSON_ID,
+INVSR_ACCT_TYP_CD,
+ACCT_TYPE_AUM,
+rank() OVER (PARTITION BY FINCL_ITRMY_PRSON_ID ORDER BY ACCT_TYPE_AUM desc) AS ACCT_TYPE_RANK
+
+from (select FINCL_ITRMY_PRSON_ID, INVSR_ACCT_TYP_CD, sum(ASSET_VAL_AMT + TEAM_ALLOC_ASSET_VAL_AMT) as ACCT_TYPE_AUM from [MSS_I_MSSBIBRFACT_NS].[dbo].[ASSET_MTHLY_AGG] M2
+where M2.MO_NUM = '201606'
+group by FINCL_ITRMY_PRSON_ID, INVSR_ACCT_TYP_CD) A
+
+group by
+FINCL_ITRMY_PRSON_ID,
+INVSR_ACCT_TYP_CD,
+ACCT_TYPE_AUM) PROD_TYPE_alt
+on FA.FINCL_ITRMY_PRSON_ID = PROD_TYPE_alt.FINCL_ITRMY_PRSON_ID 
+
+-------------------------------------------------------------------------------------------- discovery: years since rep, gender
+
+left join [MSS_S_3PD_NS].[dbo].[discovery_discovery_template_contact_bd_CURRENT] DIS
+on cast(FA.PRSON_CRD_NUM as nvarchar) = cast(DIS.REPCRD as nvarchar)
+
+where
+FA.WHSLR_TERR_ID = 26 -- one territory for faster querying
+and PARNT_CHANNEL in ('Financial Conglomerate', 'IBD', 'RIA', 'Edward Jones', 'Broker', 'Regional')
+and FND_RANK.AUM_RANK = 1 --top fund by aum
+and FND_RANK2.AUM_RANK = 2 --top fund by aum
+and PROD_TYPE.ACCT_TYPE_RANK = 1 --top acct type by aum
+and PROD_TYPE_alt.ACCT_TYPE_RANK = 1 --top acct type by aum
+and TRD_DT_RANK = 1 --oldest txn date
+and PROS.RTL_SLS_TIER_DESC != 'Unknown'
+
+group by
+FA.FINCL_ITRMY_PRSON_UID, 
+FA.FRST_NM,
+FA.LAST_NM, 
+FA.PRSON_CRD_NUM,
+dis.gender,
+cast(dis.DATEBECAMEREP_NUMBEROFYEARS as nvarchar),
+PROS.RTL_SLS_TIER_DESC,
+FRST_TXN_DT.TRD_DT,
+FA.PARNT_organization_type,
+FA.PARNT_FINCL_ITRMY_ORG_NM,
+FA.PARNT_FINCL_ITRMY_ORG_UID,
+FND_RANK.ASSET_CLASS,
+FND_RANK.ASSET_CLASS_AUM,
+FND_RANK.ASSET_CLASS_AUM / MAT.FA_AUM,
+FND_RANK2.ASSET_CLASS,
+FND_RANK2.ASSET_CLASS_AUM,
+FND_RANK2.ASSET_CLASS_AUM / MAT.FA_AUM,
+PROD_TYPE_alt.INVSR_ACCT_TYP_CD,
+PROD_TYPE_alt.ACCT_TYPE_AUM,
+PROD_TYPE_alt.ACCT_TYPE_AUM / MAT.FA_AUM,
+PROD_TYPE.INV_VEH_TYP_NM,
+PROD_TYPE.ACCT_TYPE_AUM,
+PROD_TYPE.ACCT_TYPE_AUM / MAT.FA_AUM,
+--PROD_TYPE2.INVSR_ACCT_TYP_CD,
+--PROD_TYPE2.ACCT_TYPE_AUM,
+--PROD_TYPE.ACCT_TYPE_AUM / MAT.FA_AUM,
+FT_T.TXN_CNT,
+FT_S.SLS_AMT,
+FT_R.RDMPT_AMT,
+MAT.FA_AUM,
+WC.CONTENT_PILLAR_CATEGORY
+
+order by 
+
+FA.FINCL_ITRMY_PRSON_UID desc--, click_cnt desc
+
+
+
+
+--select top 10 * from [MSS_I_MSSBIBRFACT_NS].[dbo].[ASSET_MTHLY_AGG]
+
+
+--select top 10 * from [MSS_I_MSSBIBRDIM_S].[dbo].[FINCL_ITRMY_PERSON_DIM]
+
+--select top 10 * from [MSS_I_MSSBIBRTXN_S].[dbo].[FINANCIAL_TRANSACTION]
+
+--select top 10 * from [MSS_U_NADBI_S].[dbo].[NADBI_DS_GTM_STG2_ADVISOR_WEB_VISITS_CP_INVESTMENTS_Q22016] --fund page
+--select top 10 * from [MSS_U_NADBI_S].[dbo].[NADBI_DS_GTM_STG2_ADVISOR_WEB_VISITS_CP_OTHERS_Q22016] --everything else is other
+
+
+
+--select top 10 * from [MSS_U_NADBI_S].[dbo].[NADBI_DS_GTM_STG1_WEB_ADVISOR_Q22016]
+
+--[MSS_U_NADBI_S].[dbo].[NADBI_DS_GTM_STG2_EMAILS_CLICKS_Q22016]
+
+--select top 10 * from [MSS_U_NADBI_S].[dbo].[NADBI_DS_GTM_STG3_ADVISOR_EMAIL_CLICKS] where WHSLR_TERR_ID = 26 and ADV_CLICK_DATE between '20160701' and '20161030'
+
+--select top 10 * from [MSS_U_NADBI_S].[dbo].[NADBI_DS_GTM_STG2_ADVISOR_WEB_VISITS_CP_OTHERS_Q22016]
+
+--select top 10 * from [MSS_I_MSSBI_NS].[dbo].[INV_VEH_VW]
+--select top 10 * from [MSS_I_MSSBIBRFACT_NS].[dbo].[ASSET_MTHLY_AGG]
+
+
+
+
+
+--select top 10 * from [MSS_I_MSSBIBRDIM_NS].[dbo].[FUND_SHARE_CLASS]
+
+--[dbo].[FUND_SHARE_CLASS_VW]
+
+
+
+--select top 10 * from [MSS_I_MSSBIBRDIM_NS].[dbo].[LU_RK_SOLUTION_VW]
+
+---------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------
+-- TESTING
+---------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------
+
+-- percentage of advisors who have an "UNKNOWN" prospect assignment: 28%
+
+select count(distinct A.FINCL_ITRMY_PRSON_UID) from MSS_I_MSSBI_NS.dbo.FINCL_ITRMY_PRSN_DIM_BROKER_VW as A 
+left join MSS_I_MSSBI_NS.dbo.LU_RETAIL_SLS_TIER_VW as B
+on A.RTL_SLS_TIER_CD = B.RTL_SLS_TIER_CD
+
+where RTL_SLS_TIER_DESC != 'Unknown'
+
+--406,974 w/ unknown
+--1,448,069 in total
+--.28 are unknown
+
+-- percentage of advisors who are part of a "RIA" parent organization type: 41k/1,449k  =  2.8%
+
+select PARNT_organization_type, count(FINCL_ITRMY_PRSON_UID) from [MSS_I_MSSBIBRDIM_S].[dbo].[FINCL_ITRMY_PERSON_DIM] group by PARNT_organization_type
+
+--Institutional	125
+--Consultant	18834
+--Insurance	95388
+--#	258558
+--RP Consultant	7
+--Trading Platform	3
+--Regional	21864 -- 
+--Trust	614
+--Financial Conglomerate	258580 --
+--Bank Trust	1228
+--TPA	18411
+--Broker	488315 --
+--Edward Jones	68874 --
+--RIA	41134 --
+--IBD	176134 --
+
+select PARNT_CHANNEL, count(FINCL_ITRMY_PRSON_UID) from [MSS_I_MSSBIBRDIM_S].[dbo].[FINCL_ITRMY_PERSON_DIM] group by parnt_channel
+select org_prmry_channel_nm, count(FINCL_ITRMY_PRSON_UID) from [MSS_I_MSSBIBRDIM_S].[dbo].[FINCL_ITRMY_PERSON_DIM] group by org_prmry_channel_nm
+
+
+select top 10 * from [MSS_I_MSSBIBRDIM_S].[dbo].[FINCL_ITRMY_PERSON_DIM]
